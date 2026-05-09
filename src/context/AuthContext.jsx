@@ -6,6 +6,17 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('demo_mode') === 'true';
+  });
+
+  const toggleDemoMode = () => {
+    setIsDemoMode(prev => {
+      const newMode = !prev;
+      localStorage.setItem('demo_mode', newMode);
+      return newMode;
+    });
+  };
 
   useEffect(() => {
     const checkUser = async () => {
@@ -39,10 +50,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     setUser(null);
+    window.location.href = '/';
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isDemoMode, toggleDemoMode }}>
       {children}
     </AuthContext.Provider>
   );

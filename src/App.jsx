@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
+import Wallet from './pages/Wallet';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -23,6 +24,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Dashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/wallet" 
+            element={
+              <PrivateRoute>
+                <Wallet />
               </PrivateRoute>
             } 
           />

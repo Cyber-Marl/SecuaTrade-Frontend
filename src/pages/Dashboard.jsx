@@ -3,21 +3,27 @@ import { useAuth } from '../context/AuthContext';
 import useMarketData from '../hooks/useMarketData';
 import api from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
+import TradingChart from '../components/TradingChart';
+import Layout from '../components/Layout';
+import TopBar from '../components/TopBar';
 import { 
-  TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, 
-  LayoutDashboard, PieChart, History, Settings, 
-  Search, Bell, LogOut, ChevronRight, Activity, Zap,
-  RefreshCcw, Download, Upload, CreditCard
+  Zap, RefreshCcw, Download, Upload, CreditCard
 } from 'lucide-react';
 
+import { useNavigate } from 'react-router-dom';
+
 const Dashboard = () => {
-  const { user, logout } = useAuth();
-  const { prices, status } = useMarketData();
+  const { user, isDemoMode } = useAuth();
+  const navigate = useNavigate();
+  const { prices } = useMarketData();
   const [assets, setAssets] = useState([]);
   const [ledger, setLedger] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [activeMarket, setActiveMarket] = useState('ZSE');
-  const [activeCurrency, setActiveCurrency] = useState('USD');
+  const [news, setNews] = useState([]);
+  const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
+  const [activeTab, setActiveTab] = useState('WATCHLIST');
+  const [chartData, setChartData] = useState([]);
   
   // Order Form State
   const [quantity, setQuantity] = useState('');
@@ -26,21 +32,50 @@ const Dashboard = () => {
   const [price, setPrice] = useState('');
   const [message, setMessage] = useState({ text: '', type: '' });
 
-  if (!user) return <div style={styles.loadingScreen}>Syncing Fusion Terminal...</div>;
-
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [isDemoMode]);
+
+  useEffect(() => {
+    if (selectedAsset) {
+      fetchOrderBook();
+      fetchChartData();
+    }
+  }, [selectedAsset, isDemoMode]);
+
+  const fetchChartData = async () => {
+    try {
+      const res = await api.get(`market/assets/${selectedAsset.ticker}/chart/`);
+      setChartData(res.data);
+    } catch (err) {
+      console.error("Error fetching chart data", err);
+    }
+  };
+
+  const fetchOrderBook = async () => {
+    try {
+      const res = await api.get(`trading/orderbook/${selectedAsset.id}/`, { params: { is_demo: isDemoMode } });
+      setOrderBook(res.data);
+    } catch (err) {
+      console.error("Error fetching order book", err);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
-      const [assetsRes, ledgerRes] = await Promise.all([
+      const [assetsRes, ledgerRes, newsRes] = await Promise.all([
         api.get('market/assets/'),
-        api.get('accounts/ledger/')
+        api.get('accounts/ledger/', { params: { is_demo: isDemoMode } }),
+        api.get('market/news/portfolio/', { params: { is_demo: isDemoMode } })
       ]);
       setAssets(assetsRes.data);
       setLedger(ledgerRes.data);
-      if (assetsRes.data.length > 0) setSelectedAsset(assetsRes.data[0]);
+      setNews(newsRes.data);
+      
+      if (assetsRes.data.length > 0) {
+        const initialAsset = assetsRes.data.find(a => a.market === activeMarket) || assetsRes.data[0];
+        setSelectedAsset(initialAsset);
+      }
     } catch (err) {
       console.error("Error fetching dashboard data", err);
     }
@@ -48,7 +83,6 @@ const Dashboard = () => {
 
   const handleQuickTrade = (asset, side) => {
     setSelectedAsset(asset);
-    // Focus the quantity input or show a quick modal in a real app
   };
 
   const handlePlaceOrder = async (side) => {
@@ -60,9 +94,10 @@ const Dashboard = () => {
         order_type: orderType,
         time_in_force: timeInForce,
         quantity: quantity,
-        price: orderType === 'LIMIT' ? price : null
+        price: orderType === 'LIMIT' ? price : null,
+        is_demo: isDemoMode
       });
-      setMessage({ text: `Order Routed: ${side} ${quantity} ${selectedAsset.ticker}`, type: 'success' });
+      setMessage({ text: `${isDemoMode ? '[DEMO] ' : ''}Order Routed: ${side} ${quantity} ${selectedAsset.ticker}`, type: 'success' });
       fetchDashboardData();
     } catch (err) {
       setMessage({ text: err.response?.data?.error || "Routing failed", type: 'error' });
@@ -72,285 +107,236 @@ const Dashboard = () => {
   const filteredAssets = assets.filter(a => a.market === activeMarket);
 
   return (
-    <div style={styles.container}>
-      {/* 1. SIDEBAR (VFEX Style) */}
-      <aside style={styles.sidebar} className="glass-card">
-        <div style={styles.sidebarLogo}>
-          <TrendingUp color="var(--accent-blue)" size={32} />
-          <div style={styles.logoTextGroup}>
-             <span style={styles.logoTitle}>SecuaTrade</span>
-             <span style={styles.logoSub}>FUSION TERMINAL</span>
-          </div>
-        </div>
-        
-        <nav style={styles.sideNav}>
-          <div style={{...styles.navItem, color: 'var(--accent-blue)', background: 'rgba(0,112,243,0.1)'}}>
-            <LayoutDashboard size={20} /> Dashboard
-          </div>
-          <div style={styles.navItem}><PieChart size={20} /> Portfolio</div>
-          <div style={styles.navItem}><History size={20} /> Trade Logs</div>
-          <div style={styles.navItem}><Zap size={20} /> IPO Portal</div>
-          <div style={styles.navItem}><Activity size={20} /> Markets</div>
-        </nav>
+    <Layout>
+      <TopBar title="Trading Floor" />
 
-        <div style={styles.sidebarFooter}>
-           <div style={styles.navItem} onClick={logout}><LogOut size={20} /> Logout System</div>
-        </div>
-      </aside>
-
-      <main style={styles.mainContent}>
-        {/* 2. TOP BAR */}
-        <header style={styles.topBar}>
-          <div style={styles.topTitleGroup}>
-             <h1 style={styles.pageTitle}>Trading Floor</h1>
-             <span style={styles.systemStatus}>
-               <div style={{...styles.dot, backgroundColor: status === 'connected' ? 'var(--emerald)' : 'var(--crimson)'}}></div>
-               {status === 'connected' ? 'LIVE MARKET FEED' : 'CONNECTING...'}
-             </span>
-          </div>
-          
-          <div style={styles.topActions}>
-             <div style={styles.searchBar}>
-                <Search size={16} /> <input placeholder="Ticker search..." style={styles.searchIn} />
+      <div style={styles.fusionGrid}>
+        {/* COLUMN 1: ACCOUNT */}
+        <div style={styles.accountCol}>
+          <div className="glass-card" style={styles.card}>
+             <h3 style={styles.cardTitle}>MY ACCOUNT</h3>
+             
+             <div style={styles.balanceSection}>
+                <div style={styles.balanceItem}>
+                   <div style={styles.balHeader}>
+                      <span style={styles.flag}>🇿🇼</span> ZWG (ZiG) {isDemoMode && '(DEMO)'}
+                   </div>
+                   <div style={styles.balVal}>ZWG {isDemoMode ? user?.demo_zig_balance : user?.zig_balance}</div>
+                   <div style={styles.balChange}>+0.00 Today</div>
+                </div>
+                <div style={styles.balanceDivider}></div>
+                <div style={styles.balanceItem}>
+                   <div style={styles.balHeader}>
+                      <span style={styles.flag}>🇺🇸</span> USD (VFEX) {isDemoMode && '(DEMO)'}
+                   </div>
+                   <div style={styles.balVal}>${isDemoMode ? user?.demo_usd_balance : user?.usd_balance}</div>
+                   <div style={styles.balChange}>+0.00 Today</div>
+                </div>
              </div>
-             <Bell size={20} style={styles.topIcon} />
-             <div style={styles.profileBadge}>
-                <img src={`https://ui-avatars.com/api/?name=${user?.user?.username}&background=0070f3&color=fff`} style={styles.avatar} alt="P" />
-                <span>{user?.user?.username}</span>
+
+             <div style={styles.actionGrid}>
+                <button style={styles.actionBtn} onClick={() => navigate('/wallet')}><Download size={14}/> Deposit</button>
+                <button style={styles.actionBtn} onClick={() => navigate('/wallet')}><Upload size={14}/> Withdraw</button>
+                <button style={styles.actionBtn} onClick={() => navigate('/wallet')}><RefreshCcw size={14}/> Convert</button>
+                <button style={styles.actionBtn} onClick={() => navigate('/wallet')}><CreditCard size={14}/> Portfolio</button>
              </div>
           </div>
-        </header>
 
-        {/* 3. THE FUSION GRID (3 Columns) */}
-        <div style={styles.fusionGrid}>
-          
-          {/* COLUMN 1: ACCOUNT (C-TRADE Style) */}
-          <div style={styles.accountCol}>
-            <div className="glass-card" style={styles.card}>
-               <h3 style={styles.cardTitle}>MY ACCOUNT</h3>
-               
-               <div style={styles.balanceSection}>
-                  <div style={styles.balanceItem}>
-                     <div style={styles.balHeader}>
-                        <span style={styles.flag}>🇿🇼</span> ZWG (ZiG)
-                     </div>
-                     <div style={styles.balVal}>ZWG {user?.zig_balance}</div>
-                     <div style={styles.balChange}>+0.00 Today</div>
+          <div className="glass-card" style={styles.card}>
+             <h3 style={styles.cardTitle}>PORTFOLIO NEWS</h3>
+             <div style={styles.noticeList}>
+                {news.length > 0 ? news.map(n => (
+                  <div key={n.id} style={styles.newsItem}>
+                    <div style={styles.newsTicker}>{n.asset_ticker || 'MARKET'}</div>
+                    <div style={styles.newsTitle}>{n.title}</div>
+                    <div style={styles.newsSummary}>{n.summary}</div>
                   </div>
-                  <div style={styles.balanceDivider}></div>
-                  <div style={styles.balanceItem}>
-                     <div style={styles.balHeader}>
-                        <span style={styles.flag}>🇺🇸</span> USD (VFEX)
-                     </div>
-                     <div style={styles.balVal}>${user?.usd_balance}</div>
-                     <div style={styles.balChange}>+0.00 Today</div>
-                  </div>
-               </div>
-
-               <div style={styles.actionGrid}>
-                  <button style={styles.actionBtn}><Download size={14}/> Deposit</button>
-                  <button style={styles.actionBtn}><Upload size={14}/> Withdraw</button>
-                  <button style={styles.actionBtn}><RefreshCcw size={14}/> Convert</button>
-                  <button style={styles.actionBtn}><CreditCard size={14}/> Portfolio</button>
-               </div>
-            </div>
-
-            <div className="glass-card" style={styles.card}>
-               <h3 style={styles.cardTitle}>SYSTEM NOTICES</h3>
-               <div style={styles.noticeList}>
-                  <div style={styles.noticeItem}>Market is currently OPEN for trading.</div>
-                  <div style={styles.noticeItem}>New IPO: Caledonia Mining (CMCL) live.</div>
-               </div>
-            </div>
+                )) : (
+                  <div style={styles.noticeItem}>No relevant news for your portfolio at this time.</div>
+                )}
+             </div>
           </div>
-
-          {/* COLUMN 2: MARKET WATCH (C-TRADE Style High Density) */}
-          <div style={styles.marketCol}>
-            <div className="glass-card" style={styles.marketCard}>
-               <div style={styles.marketHeader}>
-                  <h3 style={styles.cardTitle}>MARKET WATCH</h3>
-                  <div style={styles.marketTabs}>
-                     <button onClick={() => setActiveMarket('ZSE')} style={{...styles.mTab, color: activeMarket === 'ZSE' ? '#facc15' : 'var(--text-secondary)'}}>EQUITIES (ZW)</button>
-                     <button onClick={() => setActiveMarket('VFEX')} style={{...styles.mTab, color: activeMarket === 'VFEX' ? '#facc15' : 'var(--text-secondary)'}}>VFEX (USD)</button>
-                  </div>
-               </div>
-               
-               <div style={styles.assetList}>
-                  <table style={styles.fusionTable}>
-                     <thead>
-                        <tr>
-                           <th style={styles.fTh}>Asset</th>
-                           <th style={styles.fTh}>Price</th>
-                           <th style={styles.fTh}>%</th>
-                           <th style={styles.fTh}>Quick Trade</th>
-                        </tr>
-                     </thead>
-                     <tbody>
-                        {filteredAssets.map(a => (
-                          <tr key={a.id} style={{...styles.fTr, background: selectedAsset?.id === a.id ? 'rgba(250, 204, 21, 0.05)' : 'transparent'}} onClick={() => setSelectedAsset(a)}>
-                             <td style={styles.fTd}>
-                                <div style={styles.tName}>{a.ticker}</div>
-                                <div style={styles.tFull}>{a.name}</div>
-                             </td>
-                             <td style={styles.fTd}>
-                                <span style={styles.priceTag}>{prices[a.ticker] || a.current_price}</span>
-                             </td>
-                             <td style={{...styles.fTd, color: 'var(--emerald)'}}>+0.00%</td>
-                             <td style={styles.fTd}>
-                                <div style={styles.quickBtns}>
-                                   <button onClick={(e) => { e.stopPropagation(); handleQuickTrade(a, 'BUY'); }} style={styles.qBuy}>BUY</button>
-                                   <button onClick={(e) => { e.stopPropagation(); handleQuickTrade(a, 'SELL'); }} style={styles.qSell}>SELL</button>
-                                </div>
-                             </td>
-                          </tr>
-                        ))}
-                     </tbody>
-                  </table>
-               </div>
-            </div>
-          </div>
-
-          {/* COLUMN 3: TRADE (C-TRADE Style Detailed Form) */}
-          <div style={styles.tradeCol}>
-            <div className="glass-card" style={styles.card}>
-               <h3 style={styles.cardTitle}>EXECUTION ENGINE</h3>
-               
-               {selectedAsset ? (
-                 <div style={styles.orderForm}>
-                    <div style={styles.formSection}>
-                       <label style={styles.formLabel}>COMPANY SELECTED</label>
-                       <div style={styles.activeAssetBox}>
-                          <span style={styles.activeTicker}>{selectedAsset.ticker}</span>
-                          <span style={styles.activeName}>{selectedAsset.name}</span>
-                       </div>
-                    </div>
-
-                    <div style={styles.formRow}>
-                       <div style={styles.formGroup}>
-                          <label style={styles.formLabel}>ORDER TYPE</label>
-                          <select style={styles.formInput} value={orderType} onChange={e => setOrderType(e.target.value)}>
-                             <option value="MARKET">Market Order</option>
-                             <option value="LIMIT">Limit Order</option>
-                          </select>
-                       </div>
-                       <div style={styles.formGroup}>
-                          <label style={styles.formLabel}>MARKET</label>
-                          <input style={styles.formInput} value={selectedAsset.market} readOnly />
-                       </div>
-                    </div>
-
-                    <div style={styles.formGroup}>
-                       <label style={styles.formLabel}>TIME IN FORCE</label>
-                       <select style={styles.formInput} value={timeInForce} onChange={e => setTimeInForce(e.target.value)}>
-                          <option value="DAY">Day Order (DO)</option>
-                          <option value="GTC">Good Till Cancelled</option>
-                       </select>
-                    </div>
-
-                    <div style={styles.formGroup}>
-                       <label style={styles.formLabel}>QUANTITY</label>
-                       <input type="number" style={styles.formInput} placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                    </div>
-
-                    {orderType === 'LIMIT' && (
-                       <div style={styles.formGroup}>
-                          <label style={styles.formLabel}>PRICE</label>
-                          <input type="number" style={styles.formInput} placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
-                       </div>
-                    )}
-
-                    <div style={styles.grandTotal}>
-                       <span>ESTIMATED TOTAL</span>
-                       <span>
-                          {selectedAsset.market === 'ZSE' ? 'ZWG' : '$'}
-                          {(quantity * (orderType === 'LIMIT' ? price : (prices[selectedAsset.ticker] || selectedAsset.current_price))).toFixed(2)}
-                       </span>
-                    </div>
-
-                    <div style={styles.mainExecBtns}>
-                       <button onClick={() => handlePlaceOrder('BUY')} style={styles.mainBuyBtn}>PLACE BUY ORDER</button>
-                       <button onClick={() => handlePlaceOrder('SELL')} style={styles.mainSellBtn}>PLACE SELL ORDER</button>
-                    </div>
-
-                    {message.text && (
-                       <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{...styles.msgBox, background: message.type === 'error' ? 'var(--crimson-glow)' : 'var(--emerald-glow)'}}>
-                          {message.text}
-                       </motion.div>
-                    )}
-                 </div>
-               ) : (
-                 <div style={styles.emptyState}>
-                    <Zap size={48} color="rgba(255,255,255,0.05)" />
-                    <p>Select an asset from Market Watch to start trading</p>
-                 </div>
-               )}
-            </div>
-          </div>
-
         </div>
-      </main>
-    </div>
+
+        {/* COLUMN 2: MARKET WATCH & CHARTS */}
+        <div style={styles.marketCol}>
+          <div className="glass-card" style={{...styles.card, marginBottom: '20px', height: '320px', padding: '10px', overflow: 'hidden'}}>
+             <TradingChart data={chartData} ticker={selectedAsset?.ticker} />
+          </div>
+          
+          <div className="glass-card" style={{...styles.marketCard, flex: 1, minHeight: '400px'}}>
+              <div style={styles.marketHeader}>
+                 <div style={styles.marketTabs}>
+                    <button onClick={() => setActiveTab('WATCHLIST')} style={{...styles.mTab, color: activeTab === 'WATCHLIST' ? '#facc15' : 'var(--text-secondary)'}}>WATCHLIST</button>
+                    <button onClick={() => setActiveTab('ORDERBOOK')} style={{...styles.mTab, color: activeTab === 'ORDERBOOK' ? '#facc15' : 'var(--text-secondary)'}}>ORDER BOOK</button>
+                 </div>
+                 {activeTab === 'WATCHLIST' && (
+                   <div style={styles.marketTabs}>
+                      <button onClick={() => setActiveMarket('ZSE')} style={{...styles.mTab, color: activeMarket === 'ZSE' ? '#facc15' : 'var(--text-secondary)'}}>EQUITIES (ZW)</button>
+                      <button onClick={() => setActiveMarket('VFEX')} style={{...styles.mTab, color: activeMarket === 'VFEX' ? '#facc15' : 'var(--text-secondary)'}}>VFEX (USD)</button>
+                   </div>
+                 )}
+              </div>
+              
+              {activeTab === 'WATCHLIST' ? (
+                <div style={styles.assetList}>
+                   <table style={styles.fusionTable}>
+                      <thead>
+                         <tr>
+                            <th style={styles.fTh}>Asset</th>
+                            <th style={styles.fTh}>Price</th>
+                            <th style={styles.fTh}>%</th>
+                            <th style={styles.fTh}>Quick Trade</th>
+                         </tr>
+                      </thead>
+                      <tbody>
+                         {filteredAssets.map(a => (
+                           <tr key={a.id} style={{...styles.fTr, background: selectedAsset?.id === a.id ? 'rgba(250, 204, 21, 0.05)' : 'transparent'}} onClick={() => setSelectedAsset(a)}>
+                              <td style={styles.fTd}>
+                                 <div style={styles.tName}>{a.ticker}</div>
+                                 <div style={styles.tFull}>{a.name}</div>
+                              </td>
+                              <td style={styles.fTd}>
+                                 <span style={styles.priceTag}>{prices[a.ticker] || a.current_price}</span>
+                              </td>
+                              <td style={{...styles.fTd, color: 'var(--emerald)'}}>+0.00%</td>
+                              <td style={styles.fTd}>
+                                 <div style={styles.quickBtns}>
+                                    <button onClick={(e) => { e.stopPropagation(); handleQuickTrade(a, 'BUY'); }} style={styles.qBuy}>BUY</button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleQuickTrade(a, 'SELL'); }} style={styles.qSell}>SELL</button>
+                                 </div>
+                              </td>
+                           </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </div>
+              ) : (
+                <div style={styles.orderBookContainer}>
+                  <div style={styles.obHeader}>
+                     <span>Price ({selectedAsset?.market === 'ZSE' ? 'ZWG' : '$'})</span>
+                     <span>Size</span>
+                  </div>
+                  <div style={styles.obAsks}>
+                    {[...orderBook.asks].reverse().map((ask, i) => (
+                      <div key={i} style={styles.obRow}>
+                        <span style={{color: 'var(--crimson)'}}>{ask.price}</span>
+                        <span>{ask.total_remaining}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={styles.obMid}>
+                    <span style={styles.obPrice}>{prices[selectedAsset?.ticker] || selectedAsset?.current_price}</span>
+                    <span style={styles.obStatus}>LAST PRICE</span>
+                  </div>
+                  <div style={styles.obBids}>
+                    {orderBook.bids.map((bid, i) => (
+                      <div key={i} style={styles.obRow}>
+                        <span style={{color: 'var(--emerald)'}}>{bid.price}</span>
+                        <span>{bid.total_remaining}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+          </div>
+        </div>
+
+        {/* COLUMN 3: EXECUTION */}
+        <div style={styles.tradeCol}>
+          <div className="glass-card" style={styles.card}>
+             <h3 style={styles.cardTitle}>EXECUTION ENGINE</h3>
+             
+             {selectedAsset ? (
+               <div style={styles.orderForm}>
+                  <div style={styles.formSection}>
+                     <label style={styles.formLabel}>COMPANY SELECTED</label>
+                     <select 
+                       style={styles.assetDropdown} 
+                       value={selectedAsset.id} 
+                       onChange={(e) => {
+                         const asset = assets.find(a => a.id === parseInt(e.target.value));
+                         setSelectedAsset(asset);
+                       }}
+                     >
+                       {assets.map(a => (
+                         <option key={a.id} value={a.id}>
+                           {a.ticker} - {a.name}
+                         </option>
+                       ))}
+                     </select>
+                  </div>
+
+                  <div style={styles.formRow}>
+                     <div style={styles.formGroup}>
+                        <label style={styles.formLabel}>ORDER TYPE</label>
+                        <select style={styles.formInput} value={orderType} onChange={e => setOrderType(e.target.value)}>
+                           <option value="MARKET">Market Order</option>
+                           <option value="LIMIT">Limit Order</option>
+                        </select>
+                     </div>
+                     <div style={styles.formGroup}>
+                        <label style={styles.formLabel}>MARKET</label>
+                        <input style={styles.formInput} value={selectedAsset.market} readOnly />
+                     </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                     <label style={styles.formLabel}>TIME IN FORCE</label>
+                     <select style={styles.formInput} value={timeInForce} onChange={e => setTimeInForce(e.target.value)}>
+                        <option value="DAY">Day Order (DO)</option>
+                        <option value="GTC">Good Till Cancelled</option>
+                     </select>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                     <label style={styles.formLabel}>QUANTITY</label>
+                     <input type="number" style={styles.formInput} placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} />
+                  </div>
+
+                  {orderType === 'LIMIT' && (
+                     <div style={styles.formGroup}>
+                        <label style={styles.formLabel}>PRICE</label>
+                        <input type="number" style={styles.formInput} placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
+                     </div>
+                  )}
+
+                  <div style={styles.grandTotal}>
+                     <span>ESTIMATED TOTAL</span>
+                     <span>
+                        {selectedAsset.market === 'ZSE' ? 'ZWG' : '$'}
+                        {(quantity * (orderType === 'LIMIT' ? price : (prices[selectedAsset.ticker] || selectedAsset.current_price))).toFixed(2)}
+                     </span>
+                  </div>
+
+                  <div style={styles.mainExecBtns}>
+                     <button onClick={() => handlePlaceOrder('BUY')} style={styles.mainBuyBtn}>PLACE BUY ORDER</button>
+                     <button onClick={() => handlePlaceOrder('SELL')} style={styles.mainSellBtn}>PLACE SELL ORDER</button>
+                  </div>
+
+                  {message.text && (
+                     <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{...styles.msgBox, background: message.type === 'error' ? 'var(--crimson-glow)' : 'var(--emerald-glow)'}}>
+                        {message.text}
+                     </motion.div>
+                  )}
+               </div>
+             ) : (
+               <div style={styles.emptyState}>
+                  <Zap size={48} color="rgba(255,255,255,0.05)" />
+                  <p>Select an asset from Market Watch to start trading</p>
+               </div>
+             )}
+          </div>
+        </div>
+      </div>
+    </Layout>
   );
 };
 
 const styles = {
-  container: {
-    display: 'flex',
-    minHeight: '100vh',
-    background: '#040507', // Deeper black for fusion look
-    color: 'var(--text-primary)',
-    fontFamily: "'Outfit', sans-serif",
-  },
-  loadingScreen: { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' },
-  
-  sidebar: {
-    width: '240px',
-    height: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '30px 0',
-    borderRadius: '0',
-    borderRight: '1px solid rgba(255,255,255,0.05)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-  },
-  sidebarLogo: { display: 'flex', alignItems: 'center', gap: '15px', padding: '0 25px', marginBottom: '50px' },
-  logoTextGroup: { display: 'flex', flexDirection: 'column' },
-  logoTitle: { fontSize: '20px', fontWeight: '900', letterSpacing: '-1px' },
-  logoSub: { fontSize: '8px', fontWeight: '800', color: 'var(--accent-blue)', letterSpacing: '0.2em' },
-  sideNav: { flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' },
-  navItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '12px 25px',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: 'var(--text-secondary)',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  sidebarFooter: { paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' },
-
-  mainContent: { flex: 1, display: 'flex', flexDirection: 'column', padding: '25px', gap: '25px' },
-  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  topTitleGroup: { display: 'flex', flexDirection: 'column', gap: '5px' },
-  pageTitle: { fontSize: '28px', fontWeight: '800', margin: 0, letterSpacing: '-1px' },
-  systemStatus: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', fontWeight: '800', color: 'var(--text-secondary)' },
-  dot: { width: '6px', height: '6px', borderRadius: '50%' },
-  topActions: { display: 'flex', alignItems: 'center', gap: '25px' },
-  searchBar: { display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '8px 15px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' },
-  searchIn: { background: 'none', border: 'none', color: '#fff', fontSize: '13px', outline: 'none' },
-  topIcon: { cursor: 'pointer', color: 'var(--text-secondary)' },
-  profileBadge: { display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '700' },
-  avatar: { width: '34px', height: '34px', borderRadius: '50%', border: '2px solid var(--accent-blue)' },
-
   fusionGrid: { display: 'grid', gridTemplateColumns: '300px 1fr 340px', gap: '20px', flex: 1 },
-  
   card: { padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' },
   cardTitle: { fontSize: '11px', fontWeight: '900', color: '#facc15', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 },
-  
   accountCol: { display: 'flex', flexDirection: 'column', gap: '20px' },
   balanceSection: { display: 'flex', flexDirection: 'column', gap: '20px' },
   balanceItem: { display: 'flex', flexDirection: 'column', gap: '5px' },
@@ -363,7 +349,10 @@ const styles = {
   actionBtn: { padding: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#fff', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   noticeList: { display: 'flex', flexDirection: 'column', gap: '10px' },
   noticeItem: { fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' },
-
+  newsItem: { display: 'flex', flexDirection: 'column', gap: '4px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' },
+  newsTicker: { fontSize: '10px', fontWeight: '900', color: 'var(--accent-blue)', textTransform: 'uppercase' },
+  newsTitle: { fontSize: '13px', fontWeight: '700', color: '#fff' },
+  newsSummary: { fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' },
   marketCol: { display: 'flex', flexDirection: 'column' },
   marketCard: { flex: 1, display: 'flex', flexDirection: 'column', padding: '0' },
   marketHeader: { padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -380,7 +369,14 @@ const styles = {
   quickBtns: { display: 'flex', gap: '8px' },
   qBuy: { padding: '6px 12px', background: 'var(--emerald)', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '10px', fontWeight: '800' },
   qSell: { padding: '6px 12px', background: 'var(--crimson)', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '10px', fontWeight: '800' },
-
+  orderBookContainer: { padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' },
+  obHeader: { display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '800', marginBottom: '10px' },
+  obRow: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', padding: '4px 0' },
+  obAsks: { display: 'flex', flexDirection: 'column' },
+  obBids: { display: 'flex', flexDirection: 'column' },
+  obMid: { padding: '15px 0', borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '4px' },
+  obPrice: { fontSize: '18px', fontWeight: '900', color: '#fff' },
+  obStatus: { fontSize: '8px', fontWeight: '800', color: 'var(--text-secondary)' },
   tradeCol: { display: 'flex', flexDirection: 'column' },
   orderForm: { display: 'flex', flexDirection: 'column', gap: '20px' },
   formSection: { display: 'flex', flexDirection: 'column', gap: '10px' },
@@ -400,3 +396,4 @@ const styles = {
 };
 
 export default Dashboard;
+
