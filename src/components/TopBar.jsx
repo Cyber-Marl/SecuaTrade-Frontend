@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import useMarketData from '../hooks/useMarketData';
@@ -6,6 +6,33 @@ import useMarketData from '../hooks/useMarketData';
 const TopBar = ({ title }) => {
   const { user, isDemoMode } = useAuth();
   const { status } = useMarketData();
+  const [isMarketOpen, setIsMarketOpen] = useState(false);
+
+  useEffect(() => {
+    const checkMarketStatus = () => {
+      // Get current time in UTC
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      
+      // Zimbabwe is UTC + 2
+      const zimTime = new Date(utc + (3600000 * 2));
+      
+      const day = zimTime.getDay(); // 0 = Sun, 6 = Sat
+      const hours = zimTime.getHours();
+      const minutes = zimTime.getMinutes();
+      const totalMinutes = hours * 60 + minutes;
+      
+      // 09:00 is 540 minutes, 12:30 is 750 minutes
+      const isOpenDay = day >= 1 && day <= 5; // Monday to Friday
+      const isOpenTime = totalMinutes >= 540 && totalMinutes <= 750;
+      
+      setIsMarketOpen(isOpenDay && isOpenTime);
+    };
+
+    checkMarketStatus();
+    const interval = setInterval(checkMarketStatus, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header style={styles.topBar}>
@@ -13,10 +40,23 @@ const TopBar = ({ title }) => {
          <h1 style={{...styles.pageTitle, color: isDemoMode ? '#facc15' : 'var(--text-primary)'}}>
            {isDemoMode ? `Demo ${title}` : title}
          </h1>
-         <span style={styles.systemStatus}>
-           <div style={{...styles.dot, backgroundColor: status === 'connected' ? 'var(--emerald)' : 'var(--crimson)'}}></div>
-           {status === 'connected' ? 'LIVE MARKET FEED' : 'CONNECTING...'}
-         </span>
+         <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginTop: '2px' }}>
+           <span style={styles.systemStatus}>
+             <div style={{...styles.dot, backgroundColor: status === 'connected' ? 'var(--emerald)' : 'var(--crimson)'}}></div>
+             {status === 'connected' ? 'LIVE MARKET FEED' : 'CONNECTING...'}
+           </span>
+           <span style={{
+             ...styles.systemStatus, 
+             background: isMarketOpen ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+             border: `1px solid ${isMarketOpen ? 'var(--emerald)' : 'var(--crimson)'}`,
+             padding: '2px 8px',
+             borderRadius: '4px',
+             color: isMarketOpen ? 'var(--emerald)' : 'var(--crimson)',
+             letterSpacing: '0.5px'
+           }} title="ZSE/VFEX Trading Hours: Mon-Fri 09:00 - 12:30 ZCAT (UTC+2)">
+             {isMarketOpen ? '🟢 ZSE/VFEX: OPEN' : '🔴 ZSE/VFEX: CLOSED'}
+           </span>
+         </div>
       </div>
       
       <div style={styles.topActions}>
