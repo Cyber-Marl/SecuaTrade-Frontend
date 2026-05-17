@@ -45,7 +45,7 @@ const LoginPage = () => {
             <User size={20} style={styles.icon} />
             <input 
               type="text" 
-              placeholder="Username" 
+              placeholder="Email Address" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               style={styles.input}
@@ -72,7 +72,7 @@ const LoginPage = () => {
 
         <div style={styles.footer}>
           <span>New to SecuaTrade? </span>
-          <a href="#" style={styles.link}>Request Access</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); navigate('/register'); }} style={styles.link}>Request Access</a>
         </div>
       </motion.div>
     </div>

@@ -53,8 +53,13 @@ export const AuthProvider = ({ children }) => {
     window.location.href = '/';
   };
 
+  const refreshProfile = async () => {
+    const res = await api.get('accounts/profile/');
+    setUser(res.data);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isDemoMode, toggleDemoMode }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isDemoMode, toggleDemoMode, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType } from 'lightweight-charts';
+import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 
 const TradingChart = ({ data, ticker }) => {
     const chartContainerRef = useRef();
@@ -30,13 +30,17 @@ const TradingChart = ({ data, ticker }) => {
             },
         });
 
-        const newSeries = chart.addAreaSeries({
+        const newSeries = chart.addSeries(AreaSeries, {
             lineColor: '#2962FF',
             topColor: '#2962FF',
             bottomColor: 'rgba(41, 98, 255, 0.28)',
         });
 
-        newSeries.setData(data);
+        try {
+            newSeries.setData(data);
+        } catch (err) {
+            console.error("Chart data error:", err);
+        }
 
         window.addEventListener('resize', handleResize);
 

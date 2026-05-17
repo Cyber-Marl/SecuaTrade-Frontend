@@ -3,11 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   TrendingUp, LayoutDashboard, PieChart, History, 
-  Wallet, Rocket, Activity, LogOut, ClipboardList
+  Wallet, Rocket, Activity, LogOut, ClipboardList, Shield
 } from 'lucide-react';
 
 const Sidebar = () => {
-  const { logout, isDemoMode, toggleDemoMode } = useAuth();
+  const { user, logout, isDemoMode, toggleDemoMode } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -15,10 +15,15 @@ const Sidebar = () => {
     { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard' },
     { name: 'Portfolio', icon: <PieChart size={20} />, path: '/portfolio' },
     { name: 'Wallet', icon: <Wallet size={20} />, path: '/wallet' },
-    { name: 'Trade Logs', icon: <ClipboardList size={20} />, path: '/logs' },
+    { name: 'Identity', icon: <ClipboardList size={20} />, path: '/kyc' },
+    { name: 'Trade Logs', icon: <History size={20} />, path: '/logs' },
     { name: 'IPO Portal', icon: <Rocket size={20} />, path: '/ipo' },
     { name: 'Markets', icon: <Activity size={20} />, path: '/markets' },
   ];
+
+  if (user?.user?.is_staff) {
+    navItems.push({ name: 'Admin Panel', icon: <Shield size={20} color="#facc15" />, path: '/admin' });
+  }
 
   return (
     <aside style={styles.sidebar} className="glass-card">
